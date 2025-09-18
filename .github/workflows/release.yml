@@ -6,6 +6,9 @@ on:
     paths:
       - 'wc-payment-methods-by-email.php'
 
+permissions:
+  contents: write
+
 jobs:
   check-version:
     runs-on: ubuntu-latest
