@@ -1,0 +1,63 @@
+name: Auto Release
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'wc-payment-methods-by-email.php'
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version-changed: ${{ steps.check.outputs.changed }}
+      new-version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+
+      - name: Check if version changed
+        id: check
+        run: |
+          # Extract current version from plugin file
+          NEW_VERSION=$(grep -oP "Version: \K[\d\.]+" wc-payment-methods-by-email.php)
+          
+          # Extract previous version from git
+          git checkout HEAD~1 -- wc-payment-methods-by-email.php 2>/dev/null || echo "No previous version"
+          OLD_VERSION=$(grep -oP "Version: \K[\d\.]+" wc-payment-methods-by-email.php 2>/dev/null || echo "0.0")
+          git checkout HEAD -- wc-payment-methods-by-email.php
+          
+          echo "Old version: $OLD_VERSION"
+          echo "New version: $NEW_VERSION"
+          
+          if [ "$NEW_VERSION" != "$OLD_VERSION" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+  create-release:
+    needs: check-version
+    if: needs.check-version.outputs.version-changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.check-version.outputs.new-version }}
+        run: |
+          # Create git tag
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git tag -a "v$VERSION" -m "Release version $VERSION"
+          git push origin "v$VERSION"
+          
+          # Create GitHub release
+          gh release create "v$VERSION" \
+            --title "Version $VERSION" \
+            --notes "Automatic release for version $VERSION" \
+            --generate-notes

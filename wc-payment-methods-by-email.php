@@ -4,6 +4,7 @@ Plugin Name: WooCommerce Payment Methods by Email
 Description: Filter payment methods based on customer email domain
 Version: 1.0
 Author: Andreas Fält
+Update URI: https://github.com/falt/payment-methods-by-email
 */
 
 // Prevent direct access
@@ -13,8 +14,14 @@ if (!defined('ABSPATH')) {
 
 class WC_Payment_Methods_By_Email {
     
+    private $update_server = 'https://your-update-server.com'; // Replace with your actual update server
+    private $plugin_slug;
+    private $version;
 
 public function __construct() {
+    $this->plugin_slug = plugin_basename(__FILE__);
+    $this->version = '1.0';
+    
     // Existing hooks
     add_filter('woocommerce_available_payment_gateways', array($this, 'filter_payment_methods'), 10, 1);
     add_action('admin_menu', array($this, 'add_admin_menu'));
@@ -24,6 +31,11 @@ public function __construct() {
     add_action('wp_enqueue_scripts', array($this, 'enqueue_checkout_scripts'));
     add_action('wp_ajax_check_email_payment_methods', array($this, 'ajax_check_email_payment_methods'));
     add_action('wp_ajax_nopriv_check_email_payment_methods', array($this, 'ajax_check_email_payment_methods'));
+    
+    // Auto-update hooks
+    add_filter('pre_set_site_transient_update_plugins', array($this, 'check_for_update'));
+    add_filter('plugins_api', array($this, 'plugin_info'), 20, 3);
+    add_filter('upgrader_process_complete', array($this, 'after_update'), 10, 2);
 }
 
 // Add this function to enqueue scripts
@@ -321,6 +333,82 @@ public function ajax_check_email_payment_methods() {
         });
         </script>
         <?php
+    }
+
+    // Auto-update functionality
+    public function check_for_update($transient) {
+        if (empty($transient->checked)) {
+            return $transient;
+        }
+
+        // Get plugin version info from GitHub
+        $remote_version = $this->get_remote_version();
+        
+        if ($remote_version && version_compare($this->version, $remote_version, '<')) {
+            $transient->response[$this->plugin_slug] = (object) array(
+                'slug' => dirname($this->plugin_slug),
+                'plugin' => $this->plugin_slug,
+                'new_version' => $remote_version,
+                'url' => 'https://github.com/falt/payment-methods-by-email',
+                'package' => $this->get_download_url($remote_version)
+            );
+        }
+
+        return $transient;
+    }
+
+    private function get_remote_version() {
+        $request = wp_remote_get('https://api.github.com/repos/falt/payment-methods-by-email/releases/latest');
+        
+        if (!is_wp_error($request) && wp_remote_retrieve_response_code($request) === 200) {
+            $body = wp_remote_retrieve_body($request);
+            $data = json_decode($body, true);
+            
+            if (isset($data['tag_name'])) {
+                return ltrim($data['tag_name'], 'v'); // Remove 'v' prefix if present
+            }
+        }
+        
+        return false;
+    }
+
+    private function get_download_url($version) {
+        return "https://github.com/falt/payment-methods-by-email/archive/refs/tags/v{$version}.zip";
+    }
+
+    public function plugin_info($result, $action, $args) {
+        if ($action !== 'plugin_information' || $args->slug !== dirname($this->plugin_slug)) {
+            return $result;
+        }
+
+        $request = wp_remote_get('https://api.github.com/repos/falt/payment-methods-by-email/releases/latest');
+        
+        if (!is_wp_error($request) && wp_remote_retrieve_response_code($request) === 200) {
+            $body = wp_remote_retrieve_body($request);
+            $data = json_decode($body, true);
+            
+            $result = (object) array(
+                'name' => 'WooCommerce Payment Methods by Email',
+                'slug' => dirname($this->plugin_slug),
+                'version' => ltrim($data['tag_name'], 'v'),
+                'author' => 'Andreas Fält',
+                'homepage' => 'https://github.com/falt/payment-methods-by-email',
+                'short_description' => 'Filter payment methods based on customer email domain',
+                'sections' => array(
+                    'description' => 'Filter WooCommerce payment methods based on customer email domains.',
+                    'changelog' => isset($data['body']) ? $data['body'] : ''
+                ),
+                'download_link' => $this->get_download_url(ltrim($data['tag_name'], 'v'))
+            );
+        }
+
+        return $result;
+    }
+
+    public function after_update($upgrader, $options) {
+        if ($options['action'] === 'update' && $options['type'] === 'plugin') {
+            delete_transient('update_plugins');
+        }
     }
 }
 
