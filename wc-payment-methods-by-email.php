@@ -2,7 +2,7 @@
 /*
 Plugin Name: WooCommerce Payment Methods by Email
 Description: Filter payment methods based on customer email domain
-Version: 1.1
+Version: 1.2
 Author: Andreas Fält
 Update URI: https://github.com/falt/payment-methods-by-email
 */
@@ -20,7 +20,7 @@ class WC_Payment_Methods_By_Email {
 
 public function __construct() {
     $this->plugin_slug = plugin_basename(__FILE__);
-    $this->version = '1.1';
+    $this->version = '1.2';
     
     // Existing hooks
     add_filter('woocommerce_available_payment_gateways', array($this, 'filter_payment_methods'), 10, 1);
